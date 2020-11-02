@@ -1,4 +1,3 @@
-from sklearn.ensemble import GradientBoostingRegressor
 import numpy as np
 import cv2
 from cv2 import VideoCapture
@@ -6,6 +5,8 @@ import os.path
 import pickle as pkl
 import math
 import pandas as pd
+from sklearn.ensemble import GradientBoostingClassifier
+
 
 class Recognizer:
     """
@@ -22,14 +23,16 @@ class Recognizer:
             'box1': {'823': ((0, 450, 225, 225), False),
                        '889': ((0, 450, 225, 225), True)}
             }
-        box_dict = {'mitg05': 'box1',
+        box_dict = {'mitg05': 'box2',
                          'mitg04': 'box1',
                          'mitg10': 'box1'}
         if video1_name[0:5] != video2_name[0:5]:
             raise (ValueError, "videos must be from same mouse!")
-        vid1_preset = ratio_dict[box_dict[video1_name[0:5]]][video1_name[7:9]]
-        vid2_preset = ratio_dict[box_dict[video2_name[0:5]]][video2_name[7:9]]
+        vid1_preset = ratio_dict[box_dict[video1_name[0:6]]][video1_name[7:10]]
+        vid2_preset = ratio_dict[box_dict[video2_name[0:6]]][video2_name[7:10]]
 
+        # ensure dependencies intact
+        t = GradientBoostingClassifier()
         with open(classifier_object_path, 'rb') as f:
             self.clf = pkl.load(f)
 
@@ -86,7 +89,7 @@ class Recognizer:
             trials = np.array(trials, dtype=np.uint64)
             self.trial_times[i] = trials
 
-    def _load_sheet_data(self, path) -> np.ndarray[int]:
+    def _load_sheet_data(self, path) -> np.ndarray:
         f = open(path, 'r')
         count = 0
 

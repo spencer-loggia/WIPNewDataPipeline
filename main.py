@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import cv2
 from cv2 import VideoCapture
 import os
+import sys
+import trialRecognition
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
@@ -53,6 +55,24 @@ def extract_frames_labels():
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    extract_frames_labels()
+    if sys.argv[1] == 'gen_data':
+        extract_frames_labels()
+    elif sys.argv[1] == 'train':
+        pass
+        #TODO: add this code to this version
+    elif sys.argv[1] == 'predict':
+        dir = sys.argv[2]
+        fname1 = sys.argv[3]
+        fname2 = sys.argv[4]
+        clf_path = sys.argv[5]
+        fr = int(sys.argv[6])
+        sheet = sys.argv[7]
+        recog = trialRecognition.Recognizer(dir,
+                           fname1,
+                           fname2,
+                           clf_path,
+                           fr,
+                           sheet)
+        disc1, disc2 = recog.predict()
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
