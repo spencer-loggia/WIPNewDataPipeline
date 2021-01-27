@@ -1,10 +1,12 @@
 import numpy as np
+from scipy.stats import zscore
 import cv2
 from cv2 import VideoCapture
 import os.path
 import pickle as pkl
 import math
-import pandas as pd
+import matplotlib.pyplot as plt
+import sys
 from sklearn.ensemble import GradientBoostingClassifier
 
 
@@ -14,145 +16,169 @@ class Recognizer:
     Built to always recognize the first frame of trial. Can pass any pretrained sklearn classifier
     type object.
     """
-    def __init__(self, dir_path, video1_name, video2_name, classifier_object_path, frame_rate, sheet_path):
+    def __init__(self, dir_path, video1_name, video2_name, classifier_object_path, frame_rate):
         # get video frame object
-        # dictionary of crop dimensions for each video, naming convention box_id + '_' + cam number
+        # dictionary of crop dimensions for each video, toFlip, use clfObj, naming convention box_id + '_' + cam number
         ratio_dict = {
-            'box2': {'533': ((50, 400, 250, 200), True),
-                       '839': ((0, 450, 200, 250), True)},
-            'box1': {'823': ((0, 450, 225, 225), False),
-                       '889': ((0, 450, 225, 225), True)}
+            'box2': {'533': ((50, 368, 250, 568), True, True),
+                       '839': ((0, 318, 200, 518), True, True)},
+            'box1': {'823': ((13, 375, 38, 440), False, False),
+                       '889': ((71, 495, 124, 545), True, False)}
             }
         box_dict = {'mitg05': 'box2',
                          'mitg04': 'box1',
-                         'mitg10': 'box1'}
+                         'mitg10': 'box1',
+                         'mitg12': 'box1'}
         if video1_name[0:5] != video2_name[0:5]:
             raise (ValueError, "videos must be from same mouse!")
-        vid1_preset = ratio_dict[box_dict[video1_name[0:6]]][video1_name[7:10]]
-        vid2_preset = ratio_dict[box_dict[video2_name[0:6]]][video2_name[7:10]]
+        self.vid1_preset = ratio_dict[box_dict[video1_name[0:6]]][video1_name[7:10]]
+        self.vid2_preset = ratio_dict[box_dict[video2_name[0:6]]][video2_name[7:10]]
 
         # ensure dependencies intact
         t = GradientBoostingClassifier()
         with open(classifier_object_path, 'rb') as f:
             self.clf = pkl.load(f)
 
-        self.Xarrs = [np.empty(0), np.empty(0)]
-        self.Xarrs[0] = self._extract_frames(os.path.join(dir_path, video1_name), flip=vid1_preset[1], crop_to=vid1_preset[0])
-        self.Xarrs[1] = self._extract_frames(os.path.join(dir_path, video2_name), flip=vid2_preset[1], crop_to=vid2_preset[0])
+        self.Xarrs = [None, None]
+        self.Xarrs[0] = self._extract_frames(os.path.join(dir_path, video1_name), flip=self.vid1_preset[1], crop_to=self.vid1_preset[0])
+        self.Xarrs[1] = self._extract_frames(os.path.join(dir_path, video2_name), flip=self.vid2_preset[1], crop_to=self.vid2_preset[0])
 
         self.trial_times = [np.empty(0), np.empty(0)]  # init as np none to prevent compiler warnings
-        self.sheet_data = self._load_sheet_data(sheet_path)
         self.frame_rate = frame_rate
 
 
     def _extract_frames(self, video_path, flip: bool, crop_to: tuple):
         vidcap = VideoCapture(video_path)
+        if not vidcap.isOpened():
+            raise ValueError('Video could not be opened.')
         n = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fin_w = fin_h = 80  # set width and height of video frames, must match training data
+        fin_w = round((crop_to[3] - crop_to[1]) / 4)
+        fin_h = round((crop_to[2] - crop_to[0]) / 4)  # set width and height of video frames, must match training data
+        if fin_w < 1 or fin_h < 1:
+            raise IndexError("dims must be positive.")
         X = np.zeros((n, fin_h, fin_w), dtype=np.uint8)
         success, image = vidcap.read()
         count = 0
         while success and count < n:
             if flip:
                 image = cv2.flip(image, 0)
-            image = image[crop_to[0]:crop_to[0] + 318, crop_to[2]:crop_to[2] + 318, 0]  # discard redundant channels and crop
+            image = image[crop_to[0]:crop_to[2], crop_to[1]:crop_to[3], 0]  # discard redundant channels and crop
+
             image = cv2.resize(image, (0, 0),
                                fx=.25,
                                fy=.25,
                                interpolation=cv2.INTER_NEAREST)  # downsample
+
             X[count, :, :] = image
             count += 1
             success, image = vidcap.read()
         return X
 
+    def _default_clf(self, X, threshold=2.):
+        means = np.mean(np.mean(X, axis=1), axis=1)
+        z = zscore(means)
+        z[z <= threshold] = 0
+        z[z > threshold] = 1
+        return z
+
     def _get_predict_individual(self):
+        """
+        For to be considered trial, prev second must be mostly 0s and next must be 5
+        frames of 1s
+        :return:
+        """
         for i in range(2):
-            yhat = self.clf.predict(self.Xarrs[i])
+            if self.vid1_preset[2]:
+                yhat = self.clf.predict(self.Xarrs[i].reshape((self.Xarrs[i].shape[0], -1)))
+            else:
+                if i == 0:
+                    yhat = self._default_clf(self.Xarrs[i], threshold=2)
+                else:
+                    yhat = self._default_clf(self.Xarrs[i], threshold=2.5)
             # Smooth, extract trial times
-            prev = [0] * 20
             trials = []
             trial_counter = 0
-            j = 20
-            innum = False
-            while j < yhat.shape[0]:
-                prev.pop(0)
-                prev.append(yhat[j])
-                if not innum and np.mean(prev) >= .85 and 0 not in prev[j - 20:j - 17]:
+            j = self.frame_rate
+            while j < yhat.shape[0] - (self.frame_rate * 2):
+                prev = yhat[j - self.frame_rate: j]
+                next = yhat[j: j + 4]
+                if np.mean(prev) <= .1 and np.mean(next) >= 1:
                     # trial found
-                    innum = True
-                    trials.append([j - 20, -1])
+                    trials.append([j - self.frame_rate, j + (self.frame_rate * 2)])
                     trial_counter += 1
-                if innum and np.mean(prev) < .15 and 1 not in yhat[j - 20:i - 17]:
-                    innum = False
-                    trials[-1][1] = j - 20
-                j += 1
+                    j += (self.frame_rate * 2)
+                else:
+                    j += 1
             trials = np.array(trials, dtype=np.uint64)
             self.trial_times[i] = trials
 
-    def _load_sheet_data(self, path) -> np.ndarray:
-        f = open(path, 'r')
-        count = 0
-
-        # determine beginning of relevent data.
-        for line in f:
-            line = line.split()
-            if line[0] == 'Trial':
-                break
-            count += 1
-        data = pd.read_csv(path, skiprows=count, skipfooter=1)
-        response_times = data['entry.1', 'exit.1'].to_numpy()
-        response_times *= self.frame_rate # convert to frames.
-        return response_times
-
-    def _align_to_klimbic(self, vid_lens, sheet_lens):
-        """
-        align a cameras times to spreadsheet.
-        :param vid_lens:
-        :return: array of length spreadsheet data, with -1 where no match found and the index of the
-                  video trial in the other positions.
-        """
-        alignment = np.array(sheet_lens.shape[0])
-        vid_ind = 0
-        sheet_ind = 0
-        while vid_ind < vid_lens.shape[0] and sheet_ind < sheet_lens.shape[0]:
-            if math.isclose(vid_lens[vid_ind], sheet_lens[sheet_ind], abs_tol=3):
-                alignment[sheet_ind] = vid_ind
-                vid_ind += 1
-            else:
-                alignment[sheet_ind] = -1
-            sheet_ind += 1
-        return alignment
 
     def predict(self):
         """
-        Must solve the problem of aligning three sequences. Luckily, optimal overlap alignment is
-        not nessesary, we are ok with throwing out poor matches, and are primarily concerned with
-        preserving clips we have high confidence in (e.g. near length match between all three data-sources,
-        and close in local time.)
+        Must solve the problem of aligning videos.
         :return:
         """
-        lens = [None, None]
-        lens[0] = np.diff(self.trial_times[0], axis=1)
-        lens[1] = np.diff(self.trial_times[0], axis=1)
-        sheet_lens = np.diff(self.sheet_data, axis=1)
+        self._get_predict_individual()
+        # assume first trial is discovered
+        final_trial_times1 = [self.trial_times[0][0]]
+        final_trial_times2 = [self.trial_times[1][0]]
 
-        vid1_sheet_align = self._align_to_klimbic(lens[0], sheet_lens)
-        vid2_sheet_align = self._align_to_klimbic(lens[1], sheet_lens)
+        full_lens = [None, None]
+        full_lens[0] = self.trial_times[0].shape[0]
+        full_lens[1] = self.trial_times[1].shape[0]
 
-        discoverd_vid1 = []
-        discoverd_vid2 = []
+        if full_lens[0] != full_lens[1]:
+            print("WARNING: Different number of trials detected across cameras. Attempting to resolve...", sys.stderr)
 
-        max_allowed_discovery_diff = np.abs(lens[0].shape[0] - lens[1].shape[0])
+        inter_lens = [None, None]
+        inter_lens[0] = np.diff(self.trial_times[0][:, 0])
+        inter_lens[1] = np.diff(self.trial_times[1][:, 0])
+
+        tol = self.frame_rate
         # align the two cameras
-        for i in range(sheet_lens.shape[0]):
-            if vid1_sheet_align[i] != -1 and vid2_sheet_align[i] != -1:
-                diff = np.abs(vid1_sheet_align[i] - vid2_sheet_align[i])
-                max_allowed_discovery_diff -= diff
-                if max_allowed_discovery_diff < 0:
-                    break
-                discoverd_vid1.append((self.trial_times[0][vid1_sheet_align[i]]))
-                discoverd_vid2.append((self.trial_times[1][vid1_sheet_align[i]]))
-        return discoverd_vid1, discoverd_vid2
+        has_next = True
+        cam1_ind = 0
+        cam2_ind = 0
+        c1_dist = 0
+        c2_dist = 0
+        while has_next:
+            c1_dist += inter_lens[0][cam1_ind]
+            c2_dist += inter_lens[1][cam2_ind]
+            if math.isclose(c1_dist, c2_dist, abs_tol=tol):
+                c1_dist = 0
+                c2_dist = 0
+                final_trial_times1.append(self.trial_times[0][cam1_ind + 1])
+                final_trial_times2.append(self.trial_times[1][cam2_ind + 1])
+                cam1_ind += 1
+                cam2_ind += 1
+            elif c1_dist > c2_dist:
+                # c1 missed this trial, skip it for c2 as well
+                cam2_ind += 1
+                c1_dist = 0
+            elif c2_dist > c1_dist:
+                # c2 missed this trial, skip it for c1 as well
+                cam1_ind += 1
+                c2_dist = 0
+            if cam1_ind == inter_lens[0].shape[0] - 1 or cam2_ind == inter_lens[1].shape[0] - 1:
+                has_next = False
+        return final_trial_times1, final_trial_times2
 
+if __name__ == "__main__":
+    # quick test code
+    # recog = Recognizer(dir_path='/home/spencerloggia/Documents/',
+    #                    video1_name='mitg12-823--07042020111739.avi',
+    #                    video2_name='mitg12-889--07042020111738.avi',
+    #                    classifier_object_path='./SVClassifier.pkl',
+    #                    frame_rate=30)
+    #
+    # f = open('./recog_dump.pkl', 'wb')
+    # pkl.dump(recog, f)
+
+    f = open('./recog_dump.pkl', 'rb')
+    recog = pkl.load(f)
+
+    recog.frame_rate = 30
+    recog.predict()
+    print('done.')
 
 

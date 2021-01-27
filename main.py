@@ -53,7 +53,6 @@ def extract_frames_labels():
     gt_file.close()
 
 
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     if sys.argv[1] == 'gen_data':
         extract_frames_labels()
@@ -75,4 +74,3 @@ if __name__ == '__main__':
                            sheet)
         disc1, disc2 = recog.predict()
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
