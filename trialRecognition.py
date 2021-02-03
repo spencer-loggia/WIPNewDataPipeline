@@ -16,7 +16,7 @@ class Recognizer:
     Built to always recognize the first frame of trial. Can pass any pretrained sklearn classifier
     type object.
     """
-    def __init__(self, dir_path, video1_name, video2_name, classifier_object_path, frame_rate):
+    def __init__(self, dir_path, video1_name, video2_name, frame_rate, classifier_object_path=None):
         # get video frame object
         # dictionary of crop dimensions for each video, toFlip, use clfObj, naming convention box_id + '_' + cam number
         ratio_dict = {
@@ -42,8 +42,11 @@ class Recognizer:
 
         self.video_id = video1_name[12:-4]
 
-        with open(classifier_object_path, 'rb') as f:
-            self.clf = pkl.load(f)
+        if classifier_object_path is not None:
+            with open(classifier_object_path, 'rb') as f:
+                self.clf = pkl.load(f)
+        else:
+            self.clf = None
 
         self.Xarrs = [None, None]
         self.Xarrs[0] = self._extract_frames(os.path.join(dir_path, video1_name), flip=self.vid1_preset[1], crop_to=self.vid1_preset[0])
@@ -56,8 +59,7 @@ class Recognizer:
         vidcap = VideoCapture(video_path)
         if not vidcap.isOpened():
             raise ValueError('Video could not be opened.')
-        # n = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-        n = 10000
+        n = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
         h = int(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         w = int(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH))
         X = np.zeros((n, h, w), dtype=np.uint8)
@@ -187,7 +189,7 @@ class Recognizer:
         except FileExistsError:
             pass
         for i, times in enumerate(trial_times):
-            out = cv2.VideoWriter(os.path.join(snip_dir, 'camera-' + str(cam_num) + '_clip-' + str(i) + '.avi'),
+            out = cv2.VideoWriter(os.path.join(snip_dir, 'camera-' + str(cam_num + 1) + '_clip-' + str(i) + '.avi'),
                                   cv2.VideoWriter_fourcc('M','P','E','G'), 30, (self.Xarrs[cam_num].shape[1], self.Xarrs[cam_num].shape[2]))
             if times[1] > self.Xarrs[cam_num].shape[0]:
                 times[1] = self.Xarrs[cam_num].shape[0] - 1
@@ -205,8 +207,8 @@ if __name__ == "__main__":
     # recog = Recognizer(dir_path='/home/spencerloggia/Documents/',
     #                    video1_name='mitg12-823--07042020111739.avi',
     #                    video2_name='mitg12-889--07042020111738.avi',
-    #                    classifier_object_path='./SVClassifier.pkl',
-    #                    frame_rate=30)
+    #                    frame_rate=30,
+    #                    classifier_object_path='./SVClassifier.pkl',)
     #
     # f = open('./recog_dump.pkl', 'wb')
     # pkl.dump(recog, f)
