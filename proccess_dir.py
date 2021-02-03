@@ -36,8 +36,9 @@ def process(vid_dir_path, output_dir):
         for poss_match in vids:
             if poss_match[12:20] == date:
                 match = poss_match
-                vids.remove(match)
+                break
         if match is not None:
+            vids.remove(match)
             _connect_recognizer(vid_dir_path, output_dir, cur, match,)
 
 

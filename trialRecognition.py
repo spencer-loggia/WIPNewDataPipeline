@@ -7,7 +7,7 @@ import pickle as pkl
 import math
 import matplotlib.pyplot as plt
 import sys
-from sklearn.ensemble import GradientBoostingClassifier
+
 
 
 class Recognizer:
@@ -43,6 +43,7 @@ class Recognizer:
         self.video_id = video1_name[12:-4]
 
         if classifier_object_path is not None:
+            from sklearn.ensemble import GradientBoostingClassifier
             with open(classifier_object_path, 'rb') as f:
                 self.clf = pkl.load(f)
         else:
@@ -221,5 +222,3 @@ if __name__ == "__main__":
     recog.write_clips(final_trial_times1, 0, './')
     recog.write_clips(final_trial_times2, 1, './')
     print('done.')
-
-
