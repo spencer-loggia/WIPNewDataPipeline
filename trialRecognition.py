@@ -29,13 +29,19 @@ class Recognizer:
                          'mitg04': 'box1',
                          'mitg10': 'box1',
                          'mitg12': 'box1'}
-        if video1_name[0:5] != video2_name[0:5]:
+        self.mouse_id = video1_name[0:5]
+        if self.mouse_id != video2_name[0:5]:
             raise (ValueError, "videos must be from same mouse!")
-        self.vid1_preset = ratio_dict[box_dict[video1_name[0:6]]][video1_name[7:10]]
-        self.vid2_preset = ratio_dict[box_dict[video2_name[0:6]]][video2_name[7:10]]
+        self.box_name = box_dict[video1_name[0:6]]
+        if self.box_name != box_dict[video2_name[0:6]]:
+            raise ValueError("both videos must be recorded on same box")
+        self.cam1_id = video1_name[7:10]
+        self.cam2_id = video2_name[7:10]
+        self.vid1_preset = ratio_dict[self.box_name][self.cam1_id]
+        self.vid2_preset = ratio_dict[self.box_name][self.cam2_id]
 
-        # ensure dependencies intact
-        t = GradientBoostingClassifier()
+        self.video_id = video1_name[12:-4]
+
         with open(classifier_object_path, 'rb') as f:
             self.clf = pkl.load(f)
 
@@ -46,33 +52,42 @@ class Recognizer:
         self.trial_times = [np.empty(0), np.empty(0)]  # init as np none to prevent compiler warnings
         self.frame_rate = frame_rate
 
-
     def _extract_frames(self, video_path, flip: bool, crop_to: tuple):
         vidcap = VideoCapture(video_path)
         if not vidcap.isOpened():
             raise ValueError('Video could not be opened.')
-        n = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fin_w = round((crop_to[3] - crop_to[1]) / 4)
-        fin_h = round((crop_to[2] - crop_to[0]) / 4)  # set width and height of video frames, must match training data
-        if fin_w < 1 or fin_h < 1:
-            raise IndexError("dims must be positive.")
-        X = np.zeros((n, fin_h, fin_w), dtype=np.uint8)
+        # n = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+        n = 10000
+        h = int(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        w = int(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        X = np.zeros((n, h, w), dtype=np.uint8)
         success, image = vidcap.read()
         count = 0
         while success and count < n:
+            image = image[:, :, 0]  # discard redundant channels
             if flip:
                 image = cv2.flip(image, 0)
-            image = image[crop_to[0]:crop_to[2], crop_to[1]:crop_to[3], 0]  # discard redundant channels and crop
-
-            image = cv2.resize(image, (0, 0),
-                               fx=.25,
-                               fy=.25,
-                               interpolation=cv2.INTER_NEAREST)  # downsample
-
             X[count, :, :] = image
             count += 1
             success, image = vidcap.read()
         return X
+
+    def _preprocess(self, vid_arr, crop_to: tuple):
+        fin_w = round((crop_to[3] - crop_to[1]) / 4)
+        fin_h = round(
+            (crop_to[2] - crop_to[0]) / 4)  # set width and height of video frames, must match training data
+        if fin_w < 1 or fin_h < 1:
+            raise IndexError("dims must be positive.")
+        nx = np.zeros((vid_arr.shape[0], fin_h, fin_w), dtype=np.uint8)
+        for i, frame in enumerate(vid_arr):
+            image = frame[crop_to[0]:crop_to[2], crop_to[1]:crop_to[3]]  # crop
+
+            image = cv2.resize(image, (0, 0),
+                               fx=.25,
+                               fy=.25,
+                               interpolation=cv2.INTER_NEAREST)
+            nx[i] = image
+        return nx
 
     def _default_clf(self, X, threshold=2.):
         means = np.mean(np.mean(X, axis=1), axis=1)
@@ -87,14 +102,16 @@ class Recognizer:
         frames of 1s
         :return:
         """
+        crop_to = [self.vid1_preset[0], self.vid2_preset[0]]
         for i in range(2):
+            nx = self._preprocess(self.Xarrs[i], crop_to[i])
             if self.vid1_preset[2]:
-                yhat = self.clf.predict(self.Xarrs[i].reshape((self.Xarrs[i].shape[0], -1)))
+                yhat = self.clf.predict(nx.reshape((nx.shape[0], -1)))
             else:
                 if i == 0:
-                    yhat = self._default_clf(self.Xarrs[i], threshold=2)
+                    yhat = self._default_clf(nx, threshold=2)
                 else:
-                    yhat = self._default_clf(self.Xarrs[i], threshold=2.5)
+                    yhat = self._default_clf(nx, threshold=2.5)
             # Smooth, extract trial times
             trials = []
             trial_counter = 0
@@ -163,6 +180,26 @@ class Recognizer:
                 has_next = False
         return final_trial_times1, final_trial_times2
 
+    def write_clips(self, trial_times, cam_num, base_path):
+        snip_dir = os.path.join(base_path, self.box_name + '_' + self.mouse_id + '_' + self.video_id)
+        try:
+            os.mkdir(snip_dir)
+        except FileExistsError:
+            pass
+        for i, times in enumerate(trial_times):
+            out = cv2.VideoWriter(os.path.join(snip_dir, 'camera-' + str(cam_num) + '_clip-' + str(i) + '.avi'),
+                                  cv2.VideoWriter_fourcc('M','P','E','G'), 30, (self.Xarrs[cam_num].shape[1], self.Xarrs[cam_num].shape[2]))
+            if times[1] > self.Xarrs[cam_num].shape[0]:
+                times[1] = self.Xarrs[cam_num].shape[0] - 1
+            vid_frame = self.Xarrs[cam_num][times[0]:times[1]]
+            for frame in vid_frame:
+                frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                out.write(frame)
+            out.release()
+            cv2.destroyAllWindows()
+
+
+
 if __name__ == "__main__":
     # quick test code
     # recog = Recognizer(dir_path='/home/spencerloggia/Documents/',
@@ -178,7 +215,9 @@ if __name__ == "__main__":
     recog = pkl.load(f)
 
     recog.frame_rate = 30
-    recog.predict()
+    final_trial_times1, final_trial_times2 = recog.predict()
+    recog.write_clips(final_trial_times1, 0, './')
+    recog.write_clips(final_trial_times2, 1, './')
     print('done.')
 
 
