@@ -29,8 +29,8 @@ class Recognizer:
                          'mitg04': 'box1',
                          'mitg10': 'box1',
                          'mitg12': 'box1'}
-        self.mouse_id = video1_name[0:5]
-        if self.mouse_id != video2_name[0:5]:
+        self.mouse_id = video1_name[0:6]
+        if self.mouse_id != video2_name[0:6]:
             raise (ValueError, "videos must be from same mouse!")
         self.box_name = box_dict[video1_name[0:6]]
         if self.box_name != box_dict[video2_name[0:6]]:
@@ -60,8 +60,7 @@ class Recognizer:
         vidcap = VideoCapture(video_path)
         if not vidcap.isOpened():
             raise ValueError('Video could not be opened.')
-        # n = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-        n = 10000
+        n = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
         h = int(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         w = int(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH))
         X = np.zeros((n, h, w), dtype=np.uint8)
@@ -220,19 +219,33 @@ class Recognizer:
                 out.write(frame)
             out.release()
             cv2.destroyAllWindows()
-
+            if i == 5:
+                # generate blank video for ground vector
+                try:
+                    os.mkdir(os.path.join(snip_dir, "ground/"))
+                except FileExistsError:
+                    pass
+                vid_frame = self.Xarrs[cam_num][int(times[1])+5: int(times[1])+20]
+                out = cv2.VideoWriter(os.path.join(snip_dir, 'ground/camera-' + str(cam_num + 1) + '_ground_state'+ '.avi'),
+                                      cv2.VideoWriter_fourcc('M', 'P', 'E', 'G'), 30,
+                                      (self.Xarrs[cam_num].shape[1], self.Xarrs[cam_num].shape[2]))
+                for frame in vid_frame:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                    out.write(frame)
+                out.release()
+                cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
     # quick test code
-    recog = Recognizer(dir_path='/home/spencerloggia/Documents/mitg12111920/',
-                       video1_name='mitg12-823--07042020111739.avi',
-                       video2_name='mitg12-889--07042020111738.avi',
-                       frame_rate=30,
-                       classifier_object_path='./SVClassifier.pkl',)
-
-    f = open('./recog_dump.pkl', 'wb')
-    pkl.dump(recog, f)
+    # recog = Recognizer(dir_path='/home/spencerloggia/Documents/mitg12111920/',
+    #                    video1_name='mitg12-823--07042020111739.avi',
+    #                    video2_name='mitg12-889--07042020111738.avi',
+    #                    frame_rate=30,
+    #                    classifier_object_path='./SVClassifier.pkl',)
+    #
+    # f = open('./recog_dump.pkl', 'wb')
+    # pkl.dump(recog, f)
 
     f = open('./recog_dump.pkl', 'rb')
     recog = pkl.load(f)
