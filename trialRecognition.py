@@ -60,7 +60,8 @@ class Recognizer:
         vidcap = VideoCapture(video_path)
         if not vidcap.isOpened():
             raise ValueError('Video could not be opened.')
-        n = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+        # n = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+        n = 10000
         h = int(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         w = int(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH))
         X = np.zeros((n, h, w), dtype=np.uint8)
@@ -112,9 +113,9 @@ class Recognizer:
                 yhat = self.clf.predict(nx.reshape((nx.shape[0], -1)))
             else:
                 if i == 0:
-                    yhat = self._default_clf(nx, threshold=2)
+                    yhat = self._default_clf(nx, threshold=1.5)
                 else:
-                    yhat = self._default_clf(nx, threshold=2.5)
+                    yhat = self._default_clf(nx, threshold=1.5)
             # Smooth, extract trial times
             trials = []
             trial_counter = 0
@@ -132,6 +133,22 @@ class Recognizer:
             trials = np.array(trials, dtype=np.uint64)
             self.trial_times[i] = trials
 
+    def match_first(self):
+        has_next = True
+        ind1 = 0
+        ind2 = 0
+
+        while has_next:
+            if ind1 >= len(self.trial_times[0]) or ind2 >= len(self.trial_times[0]):
+                return None, None
+            first1 = self.trial_times[0][ind1]
+            first2 = self.trial_times[1][ind2]
+            if math.isclose(first1[0], first2[0], abs_tol=self.frame_rate*6):
+                return first1, first2
+            elif first1[0] < first2[0]:
+                ind1 += 1
+            else:
+                ind2 += 1
 
     def predict(self):
         """
@@ -139,9 +156,12 @@ class Recognizer:
         :return:
         """
         self._get_predict_individual()
-        # assume first trial is discovered
-        final_trial_times1 = [self.trial_times[0][0]]
-        final_trial_times2 = [self.trial_times[1][0]]
+        # find first
+        first = self.match_first()
+        if first[0] is None:
+            raise RuntimeError("Failed to match video trials.")
+        final_trial_times1 = [first[0]]
+        final_trial_times2 = [first[1]]
 
         full_lens = [None, None]
         full_lens[0] = self.trial_times[0].shape[0]
@@ -205,14 +225,14 @@ class Recognizer:
 
 if __name__ == "__main__":
     # quick test code
-    # recog = Recognizer(dir_path='/home/spencerloggia/Documents/',
-    #                    video1_name='mitg12-823--07042020111739.avi',
-    #                    video2_name='mitg12-889--07042020111738.avi',
-    #                    frame_rate=30,
-    #                    classifier_object_path='./SVClassifier.pkl',)
-    #
-    # f = open('./recog_dump.pkl', 'wb')
-    # pkl.dump(recog, f)
+    recog = Recognizer(dir_path='/home/spencerloggia/Documents/mitg12111920/',
+                       video1_name='mitg12-823--07042020111739.avi',
+                       video2_name='mitg12-889--07042020111738.avi',
+                       frame_rate=30,
+                       classifier_object_path='./SVClassifier.pkl',)
+
+    f = open('./recog_dump.pkl', 'wb')
+    pkl.dump(recog, f)
 
     f = open('./recog_dump.pkl', 'rb')
     recog = pkl.load(f)

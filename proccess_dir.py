@@ -22,7 +22,11 @@ def _connect_recognizer(vid_dir, out_dir, vid_a, vid_b):
     else:
         print('Error')
         return
-    final_trial_times1, final_trial_times2 = recog.predict()
+    try:
+        final_trial_times1, final_trial_times2 = recog.predict()
+    except RuntimeError:
+        print("failed to match " + str(vid_a) + " and " + str(vid_b), sys.stderr)
+        return
     recog.write_clips(final_trial_times1, 0, out_dir)
     recog.write_clips(final_trial_times2, 1, out_dir)
 
