@@ -31,17 +31,21 @@ def _connect_recognizer(vid_dir, out_dir, vid_a, vid_b):
     recog.write_clips(final_trial_times2, 1, out_dir)
 
 
-def process(vid_dir_path, output_dir):
+def process(vid_dir_path, output_dir, start_date=None, end_date=None):
     vids = set(os.listdir(vid_dir_path))
     while len(vids) > 1:
         cur = vids.pop()
         date = cur[12:20]
+        if start_date is not None and (int(date) < start_date or int(date) > end_date):
+            print('here0')
+            continue
         match = None
         for poss_match in vids:
             if poss_match[12:20] == date:
                 match = poss_match
                 break
         if match is not None:
+            print('here')
             vids.remove(match)
             _connect_recognizer(vid_dir_path, output_dir, cur, match,)
 
@@ -49,4 +53,9 @@ def process(vid_dir_path, output_dir):
 if __name__ == "__main__":
     vid_dir_path = sys.argv[1]  # directory containing all input videos
     output_dir = sys.argv[2]  # location where folders for each days snips will be stored
-    process(vid_dir_path, output_dir)
+    start_date = None
+    end_date = None
+    if len(sys.argv) > 3:
+        start_date = int(sys.argv[3])
+        end_date = int(sys.argv[4])
+    process(vid_dir_path, output_dir, start_date, end_date)
