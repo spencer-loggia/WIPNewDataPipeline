@@ -58,7 +58,7 @@ class CalPreprocessor:
         while i < means.shape[0]:
             prev.pop(0)
             prev.append(np.abs(z[i]))
-            if np.min(prev) >= 3.5:
+            if np.min(prev) >= 3:
                 # flash found
                 flash_ind = i - 9
                 return flash_ind
@@ -86,6 +86,52 @@ class CalPreprocessor:
             cv2.imwrite(os.path.join(self.output_dir, fname1), X1[ind])
             fname2 = "camera-2_image_%d.jpg" % ind
             cv2.imwrite(os.path.join(self.output_dir, fname2), X2[ind+offset])
+
+
+def batch_process(source_dir: str, target_dir: str):
+    # reads all cal videos in source dir and extracts frame pairs to target dir
+    CAM_DEF = {
+        '823': (1, 1, '889'),
+        '889': (1, 2, '823'),
+        '533': (2, 2, '839'),
+        '839': (2, 1, '533')
+    }  # (cam_id: (box#, cam#, partner_id)
+    videos = set(os.listdir(source_dir))
+    try:
+        os.mkdir(target_dir)
+    except FileExistsError:
+        pass
+    while len(videos) > 1:
+        vid = videos.pop()
+        cam_id = vid[4:7]
+        date = vid[9:17]
+        vid_match = None
+        # find matching video
+        partner_id = CAM_DEF[cam_id][2]
+        for nvid in videos:
+            ncam_id = nvid[4:7]
+            ndate = nvid[9:17]
+            if ncam_id == partner_id and ndate == date:
+                vid_match = nvid
+                break
+        if vid_match is None:
+            continue
+        videos.remove(vid_match)
+        box_num = CAM_DEF[cam_id][0]
+        cam_num = CAM_DEF[cam_id][1]
+        final_dir = os.path.join(target_dir, 'box' + str(box_num) + '_date')
+        os.mkdir(final_dir)
+        if cam_num == 1:
+            # first vid found is camera 1
+            vid1 = os.path.join(source_dir, vid)
+            vid2 = os.path.join(source_dir, vid_match)
+        else:
+            # second found is camera 1
+            vid1 = os.path.join(source_dir, vid_match)
+            vid2 = os.path.join(source_dir, vid)
+        preprocessor = CalPreprocessor(vid1, vid2, final_dir, 40)
+        preprocessor.save_matched_sample()
+
 
 
 
