@@ -3,6 +3,7 @@ from cv2 import VideoCapture
 import cv2
 import numpy as np
 from scipy.stats import zscore
+import sys
 
 
 class CalPreprocessor:
@@ -88,7 +89,7 @@ class CalPreprocessor:
             cv2.imwrite(os.path.join(self.output_dir, fname2), X2[ind+offset])
 
 
-def batch_process(source_dir: str, target_dir: str):
+def batch_process(source_dir: str, target_dir: str, num_frames: int):
     # reads all cal videos in source dir and extracts frame pairs to target dir
     CAM_DEF = {
         '823': (1, 1, '889'),
@@ -129,11 +130,15 @@ def batch_process(source_dir: str, target_dir: str):
             # second found is camera 1
             vid1 = os.path.join(source_dir, vid_match)
             vid2 = os.path.join(source_dir, vid)
-        preprocessor = CalPreprocessor(vid1, vid2, final_dir, 40)
+        preprocessor = CalPreprocessor(vid1, vid2, final_dir, num_frames)
         preprocessor.save_matched_sample()
 
 
-
+if __name__ == "__main__":
+    source_dir = sys.argv[1]
+    target_dir = sys.argv[2]
+    num_frames = int(sys.argv[3])
+    batch_process(source_dir, target_dir, num_frames)
 
 
 
