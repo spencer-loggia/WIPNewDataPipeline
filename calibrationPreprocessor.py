@@ -59,7 +59,7 @@ class CalPreprocessor:
         while i < means.shape[0]:
             prev.pop(0)
             prev.append(np.abs(z[i]))
-            if np.min(prev) >= 3:
+            if np.min(prev) >= 2.5:
                 # flash found
                 flash_ind = i - 9
                 return flash_ind
@@ -120,7 +120,7 @@ def batch_process(source_dir: str, target_dir: str, num_frames: int):
         videos.remove(vid_match)
         box_num = CAM_DEF[cam_id][0]
         cam_num = CAM_DEF[cam_id][1]
-        final_dir = os.path.join(target_dir, 'box' + str(box_num) + '_date')
+        final_dir = os.path.join(target_dir, 'box' + str(box_num) + '_' + date)
         os.mkdir(final_dir)
         if cam_num == 1:
             # first vid found is camera 1
@@ -130,15 +130,16 @@ def batch_process(source_dir: str, target_dir: str, num_frames: int):
             # second found is camera 1
             vid1 = os.path.join(source_dir, vid_match)
             vid2 = os.path.join(source_dir, vid)
-        preprocessor = CalPreprocessor(vid1, vid2, final_dir, num_frames)
-        preprocessor.save_matched_sample()
-
+        print("proccessing " + vid + ' and ' + vid_match + ' ...')
+        try:
+            preprocessor = CalPreprocessor(vid1, vid2, final_dir, num_frames)
+            preprocessor.save_matched_sample()
+        except Exception:
+            print("could not find flash, skipping...")
+            os.rmdir(final_dir)
 
 if __name__ == "__main__":
     source_dir = sys.argv[1]
     target_dir = sys.argv[2]
     num_frames = int(sys.argv[3])
     batch_process(source_dir, target_dir, num_frames)
-
-
-
