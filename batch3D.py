@@ -31,7 +31,7 @@ class Process3D:
             pass
         shutil.copytree(os.path.join(self.cal_dir, cal_date_dir), os.path.join(self.net, 'calibration_images'))
         net_file = os.path.join(self.net, 'config.yaml')
-        dlc.calibrate_cameras(net_file, cbrow=8, cbcol=8, calibrate=True, alpha=0.9)
+        dlc.calibrate_cameras(net_file, cbrow=9, cbcol=9, calibrate=True, alpha=0.9)
 
     def triangulate(self, vid_date_dir):
         net_file = os.path.join(self.net, 'config.yaml')
