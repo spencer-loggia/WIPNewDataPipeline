@@ -13,7 +13,7 @@ session = tf.Session(config=config)
 
 class Process3D:
 
-    def __init__(self, file_3d, cal_dir, vid_dir):
+    def __init__(self, file_3d, ground_file_3d, cal_dir, vid_dir):
         '''
         Function to run a bunch of 3d labellings, while recallibrating 3D net as needed
         and detecting errors.
@@ -28,6 +28,7 @@ class Process3D:
         self.videos = os.listdir(vid_dir)
         self.cal = os.listdir(cal_dir)
         self.net = file_3d
+        self.ground_net = ground_file_3d
         from tensorflow.python.client import device_lib
         device_lib.list_local_devices()
 
@@ -38,22 +39,38 @@ class Process3D:
         except FileNotFoundError:
             pass
         try:
+            shutil.rmtree(os.path.join(self.ground_net, 'calibration_images'))
+        except FileNotFoundError:
+            pass
+        try:
             shutil.rmtree(os.path.join(self.net, 'camera_matrix'))
             os.mkdir(os.path.join(self.net, 'camera_matrix'))
         except FileNotFoundError:
             pass
+        try:
+            shutil.rmtree(os.path.join(self.ground_net, 'camera_matrix'))
+            os.mkdir(os.path.join(self.ground_net, 'camera_matrix'))
+        except FileNotFoundError:
+            pass
         shutil.copytree(os.path.join(self.cal_dir, cal_date_dir), os.path.join(self.net, 'calibration_images'))
+        shutil.copytree(os.path.join(self.cal_dir, cal_date_dir), os.path.join(self.ground_net, 'calibration_images'))
         net_file = os.path.join(self.net, 'config.yaml')
-        dlc.calibrate_cameras(net_file, cbrow=8, cbcol=8, calibrate=True, alpha=0.8)
-        print('calibration complete')
+        ground_net_file = os.path.join(self.ground_net, 'config.yaml')
+        dlc.calibrate_cameras(net_file, cbrow=8, cbcol=8, calibrate=True, alpha=0.9)
+        dlc.calibrate_cameras(ground_net_file, cbrow=8, cbcol=8, calibrate=True, alpha=0.9)
+        print('************\n\ncalibration complete\n\n************')
 
     def triangulate(self, vid_date_dir):
         net_file = os.path.join(self.net, 'config.yaml')
+        ground_net_file = os.path.join(self.ground_net, 'config.yaml')
         dlc.triangulate(net_file, os.path.join(self.vid_dir, vid_date_dir), filterpredictions=True)
-        print("triangulation complete")
+        dlc.triangulate(net_file, os.path.join(self.vid_dir, vid_date_dir, 'ground'), filterpredictions=True)
+        print("************\n\ntriangulation complete\n\n************")
         dlc.create_labeled_video_3d(config=net_file,
                                     path=[os.path.join(self.vid_dir, vid_date_dir)])
-        print("Finished generating labelled clips")
+        dlc.create_labeled_video_3d(config=net_file,
+                                    path=[os.path.join(self.vid_dir, vid_date_dir)])
+        print("************\n\nFinished generating labelled clips************\n\n")
 
     def process(self):
         for vid_date in self.videos:
@@ -72,14 +89,15 @@ class Process3D:
                     best_cal = c
                     best_date = cdate
             if best_cal is not None:
-                print("Processing " + vid_date + " using cal file from " + str(best_date))
+                print("************\n\nProcessing " + vid_date + " using cal file from " + str(best_date) + '\n\n************')
                 self.calibrate(best_cal)
                 self.triangulate(vid_date)
 
 
 if __name__ == "__main__":
     net_path = sys.argv[1]
-    cal_dir_path = sys.argv[2]
-    vid_dir_path = sys.argv[3]
-    processor = Process3D(net_path, cal_dir_path, vid_dir_path)
+    ground_net_path = sys.argv[2]
+    cal_dir_path = sys.argv[3]
+    vid_dir_path = sys.argv[4]
+    processor = Process3D(net_path, ground_net_path, cal_dir_path, vid_dir_path)
     processor.process()
