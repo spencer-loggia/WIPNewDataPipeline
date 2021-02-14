@@ -31,6 +31,18 @@ class Process3D:
         self.ground_net = ground_file_3d
         from tensorflow.python.client import device_lib
         device_lib.list_local_devices()
+        self.repair_ground()
+
+    def repair_ground(self):
+        for viddate in self.videos:
+            ground_vids = os.listdir(os.path.join(self.vid_dir, viddate, 'ground'))
+            for ground_vid in ground_vids:
+                if 'camera-1' in ground_vid:
+                    os.rename(os.path.join(self.vid_dir, viddate, 'ground', ground_vid),
+                              os.path.join(self.vid_dir, viddate, 'ground', 'camera-1_ground.avi'))
+                elif 'camera-2' in ground_vid:
+                    os.rename(os.path.join(self.vid_dir, viddate, 'ground', ground_vid),
+                              os.path.join(self.vid_dir, viddate, 'ground', 'camera-2_ground.avi'))
 
     def calibrate(self, cal_date_dir):
         # move cal images to 3D project
