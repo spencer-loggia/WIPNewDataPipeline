@@ -35,7 +35,10 @@ class Process3D:
 
     def repair_ground(self):
         for viddate in self.videos:
-            ground_vids = os.listdir(os.path.join(self.vid_dir, viddate, 'ground'))
+            try:
+                ground_vids = os.listdir(os.path.join(self.vid_dir, viddate, 'ground'))
+            except FileNotFoundError:
+                continue
             for ground_vid in ground_vids:
                 if 'camera-1' in ground_vid:
                     os.rename(os.path.join(self.vid_dir, viddate, 'ground', ground_vid),
@@ -86,6 +89,11 @@ class Process3D:
 
     def process(self):
         for vid_date in self.videos:
+            try:
+                ground_vids = os.listdir(os.path.join(self.vid_dir, vid_date, 'ground'))
+            except FileNotFoundError:
+                print('skipping ' + vid_date)
+                continue
             date = str(vid_date[12:20])
             vdate = datetime.date(month=int(date[0:2]),
                                   day=int(date[2:4]),
