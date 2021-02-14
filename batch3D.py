@@ -3,6 +3,12 @@ import os
 import datetime
 import shutil
 import sys
+import tensorflow as tf
+
+TF_FORCE_GPU_ALLOW_GROWTH = True
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
+session = tf.Session(config=config)
 
 
 class Process3D:
@@ -22,6 +28,8 @@ class Process3D:
         self.videos = os.listdir(vid_dir)
         self.cal = os.listdir(cal_dir)
         self.net = file_3d
+        from tensorflow.python.client import device_lib
+        device_lib.list_local_devices()
 
     def calibrate(self, cal_date_dir):
         # move cal images to 3D project
@@ -29,36 +37,34 @@ class Process3D:
             shutil.rmtree(os.path.join(self.net, 'calibration_images'))
         except FileNotFoundError:
             pass
+        try:
+            shutil.rmtree(os.path.join(self.net, 'camera_matrix'))
+            os.mkdir(os.path.join(self.net, 'camera_matrix'))
+        except FileNotFoundError:
+            pass
         shutil.copytree(os.path.join(self.cal_dir, cal_date_dir), os.path.join(self.net, 'calibration_images'))
         net_file = os.path.join(self.net, 'config.yaml')
-        dlc.calibrate_cameras(net_file, cbrow=9, cbcol=9, calibrate=True, alpha=0.9)
+        dlc.calibrate_cameras(net_file, cbrow=8, cbcol=8, calibrate=True, alpha=0.8)
+        print('calibration complete')
 
     def triangulate(self, vid_date_dir):
         net_file = os.path.join(self.net, 'config.yaml')
-        try:
-            os.mkdir(os.path.join(os.path.split(self.vid_dir)[0], 'predicted_3d'))
-        except FileExistsError:
-            pass
-        dest_path = os.path.join(os.path.split(self.vid_dir)[0], 'predicted_3d', vid_date_dir)
-        try:
-            os.mkdir(dest_path)
-        except FileExistsError:
-            pass
-        dlc.triangulate(net_file, os.path.join(self.vid_dir, vid_date_dir), filterpredictions=True, destfolder=dest_path)
+        dlc.triangulate(net_file, os.path.join(self.vid_dir, vid_date_dir), filterpredictions=True)
+        print("triangulation complete")
         dlc.create_labeled_video_3d(config=net_file,
-                                    path=[dest_path],
-                                    videofolder=os.path.join(self.vid_dir, vid_date_dir))
+                                    path=[os.path.join(self.vid_dir, vid_date_dir)])
+        print("Finished generating labelled clips")
 
     def process(self):
         for vid_date in self.videos:
-            date = str(self.videos[12:20])
+            date = str(vid_date[12:20])
             vdate = datetime.date(month=int(date[0:2]),
                                   day=int(date[2:4]),
                                   year=int(date[4:8]))
             best_cal = None
-            best_date = datetime.date(00, 00, 0000)
+            best_date = datetime.date(2000, 1, 1)
             for c in self.cal:
-                cdate = str(self.cal[5:])
+                cdate = str(c[5:])
                 cdate = datetime.date(month=int(cdate[0:2]),
                                       day=int(cdate[2:4]),
                                       year=int(cdate[4:8]))
@@ -77,5 +83,3 @@ if __name__ == "__main__":
     vid_dir_path = sys.argv[3]
     processor = Process3D(net_path, cal_dir_path, vid_dir_path)
     processor.process()
-
-
