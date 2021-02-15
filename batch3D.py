@@ -3,6 +3,8 @@ import os
 import datetime
 import shutil
 import sys
+from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 import tensorflow as tf
 
 TF_FORCE_GPU_ALLOW_GROWTH = True
@@ -40,12 +42,15 @@ class Process3D:
             except FileNotFoundError:
                 continue
             for ground_vid in ground_vids:
-                if 'camera-1' in ground_vid:
-                    os.rename(os.path.join(self.vid_dir, viddate, 'ground', ground_vid),
-                              os.path.join(self.vid_dir, viddate, 'ground', 'camera-1_ground.avi'))
-                elif 'camera-2' in ground_vid:
-                    os.rename(os.path.join(self.vid_dir, viddate, 'ground', ground_vid),
-                              os.path.join(self.vid_dir, viddate, 'ground', 'camera-2_ground.avi'))
+                try:
+                    if 'camera-1' in ground_vid:
+                        os.rename(os.path.join(self.vid_dir, viddate, 'ground', ground_vid),
+                                  os.path.join(self.vid_dir, viddate, 'ground', 'camera-1_ground.avi'))
+                    elif 'camera-2' in ground_vid:
+                        os.rename(os.path.join(self.vid_dir, viddate, 'ground', ground_vid),
+                                  os.path.join(self.vid_dir, viddate, 'ground', 'camera-2_ground.avi'))
+                except FileExistsError:
+                    pass
 
     def calibrate(self, cal_date_dir):
         # move cal images to 3D project
@@ -78,17 +83,24 @@ class Process3D:
     def triangulate(self, vid_date_dir):
         net_file = os.path.join(self.net, 'config.yaml')
         ground_net_file = os.path.join(self.ground_net, 'config.yaml')
-        dlc.triangulate(net_file, os.path.join(self.vid_dir, vid_date_dir), filterpredictions=True)
-        dlc.triangulate(net_file, os.path.join(self.vid_dir, vid_date_dir, 'ground'), filterpredictions=True)
+        dlc.triangulate(net_file, os.path.join(self.vid_dir, vid_date_dir), filterpredictions=True, save_as_csv=True)
+        dlc.triangulate(ground_net_file, os.path.join(self.vid_dir, vid_date_dir, 'ground'), filterpredictions=True, save_as_csv=True)
         print("************\n\ntriangulation complete\n\n************")
-        dlc.create_labeled_video_3d(config=net_file,
-                                    path=[os.path.join(self.vid_dir, vid_date_dir)])
-        dlc.create_labeled_video_3d(config=net_file,
-                                    path=[os.path.join(self.vid_dir, vid_date_dir)])
+        try:
+            dlc.create_labeled_video_3d(config=net_file,
+                                        path=[os.path.join(self.vid_dir, vid_date_dir)])
+            dlc.create_labeled_video_3d(config=ground_net_file,
+                                        path=[os.path.join(self.vid_dir, vid_date_dir)])
+        except Exception:
+            "skipping labelled frame generation, data still available"
+            return
+
         print("************\n\nFinished generating labelled clips************\n\n")
 
     def process(self):
         for vid_date in self.videos:
+            if '07242020' in vid_date or '07252020' in vid_date:
+                continue
             try:
                 ground_vids = os.listdir(os.path.join(self.vid_dir, vid_date, 'ground'))
             except FileNotFoundError:
