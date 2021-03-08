@@ -76,8 +76,11 @@ class Process3D:
         shutil.copytree(os.path.join(self.cal_dir, cal_date_dir), os.path.join(self.ground_net, 'calibration_images'))
         net_file = os.path.join(self.net, 'config.yaml')
         ground_net_file = os.path.join(self.ground_net, 'config.yaml')
-        dlc.calibrate_cameras(net_file, cbrow=8, cbcol=8, calibrate=True, alpha=0.9)
-        dlc.calibrate_cameras(ground_net_file, cbrow=8, cbcol=8, calibrate=True, alpha=0.9)
+        try:
+            dlc.calibrate_cameras(net_file, cbrow=8, cbcol=8, calibrate=True, alpha=0.9)
+            dlc.calibrate_cameras(ground_net_file, cbrow=8, cbcol=8, calibrate=True, alpha=0.9)
+        except Exception as e:
+            raise RuntimeError
         print('************\n\ncalibration complete\n\n************')
 
     def triangulate(self, vid_date_dir):
@@ -97,33 +100,47 @@ class Process3D:
 
         print("************\n\nFinished generating labelled clips************\n\n")
 
+    def _find_cal(self, vdate):
+        best_cal = None
+        best_date = datetime.date(2000, 1, 1)
+        for c in self.cal:
+            cdate = str(c[5:])
+            cdate = datetime.date(month=int(cdate[0:2]),
+                                  day=int(cdate[2:4]),
+                                  year=int(cdate[4:8]))
+            if vdate > cdate > best_date:
+                best_cal = c
+                best_date = cdate
+        try:
+            if best_cal is not None:
+                self.calibrate(best_cal)
+            else:
+                return None
+        except RuntimeError:
+            print("found " + str(best_cal) + ' to be malformed.')
+            self.cal.remove(best_cal)
+            self._find_cal(vdate)
+        return best_date
+
+
     def process(self):
         for vid_date in self.videos:
-            if '07242020' in vid_date or '07252020' in vid_date:
+            date = str(vid_date[12:20])
+            if int(date) <= 9182020:
                 continue
             try:
                 ground_vids = os.listdir(os.path.join(self.vid_dir, vid_date, 'ground'))
             except FileNotFoundError:
                 print('skipping ' + vid_date)
                 continue
-            date = str(vid_date[12:20])
             vdate = datetime.date(month=int(date[0:2]),
                                   day=int(date[2:4]),
                                   year=int(date[4:8]))
-            best_cal = None
-            best_date = datetime.date(2000, 1, 1)
-            for c in self.cal:
-                cdate = str(c[5:])
-                cdate = datetime.date(month=int(cdate[0:2]),
-                                      day=int(cdate[2:4]),
-                                      year=int(cdate[4:8]))
-                if vdate > cdate > best_date:
-                    best_cal = c
-                    best_date = cdate
-            if best_cal is not None:
+            best_date = self._find_cal(vdate)
+            if best_date is not None:
                 print("************\n\nProcessing " + vid_date + " using cal file from " + str(best_date) + '\n\n************')
-                self.calibrate(best_cal)
                 self.triangulate(vid_date)
+
 
 
 if __name__ == "__main__":
