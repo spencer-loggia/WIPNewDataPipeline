@@ -126,7 +126,7 @@ class Process3D:
     def process(self):
         for vid_date in self.videos:
             date = str(vid_date[12:20])
-            if int(date) <= 7042020:
+            if int(date) <= 9202020:
                 continue
             try:
                 ground_vids = os.listdir(os.path.join(self.vid_dir, vid_date, 'ground'))
